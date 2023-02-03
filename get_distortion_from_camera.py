@@ -77,20 +77,14 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
 
             number_of_pictures -= 1
             if number_of_pictures <= 0:
-
-                if demo:
-                    img_translationS = cv.resize(img_translation, (960, 540))
-                    imgS = cv.resize(img, (960, 540))
-                    add_cross(imgS)
-                    add_cross(img_translationS)
-
-                    cv.imshow('Translation', img_translationS)
-                    cv.waitKey()
-
-                    cv.imshow('Original', imgS)
-                    cv.waitKey()
-                    cv.destroyAllWindows()
                 break
+
+        else:
+            if demo:
+                imgS = cv.resize(img, (960, 540))
+                add_cross(imgS)
+                cv.imshow('img', imgS)
+                cv.waitKey(100)
 
     cv.destroyAllWindows()
 
@@ -98,9 +92,7 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
     camera_distortion = {
         "ret": ret,
         "mtx": mtx,
-        "dist": dist,
-        "rvecs": rvecs,
-        "tvecs": tvecs
+        "dist": dist
     }
     return camera_distortion, shift_vector
 
