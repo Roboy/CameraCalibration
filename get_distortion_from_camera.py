@@ -116,6 +116,8 @@ def save_parameters(camera_distortion, image_shift, path):
     # Write a YAML representation of camera_distortion to 'camera_distortion.yaml'.
     filename = 'camera_distortion.yaml'
     full_path = os.path.join(path, filename)
+    if not os.path.exists(path):
+        os.makedirs(path)
     stream = open(full_path, 'w')
     data = camera_distortion.copy()
     data['image_shift'] = image_shift
@@ -144,7 +146,7 @@ def get_camera_distortion(path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Camera calibration")
     parser.add_argument("camera_name", help="Name of the camera, which calibrate", type=str)
-    parser.add_argument("-number_of_pictures", help="Amount of photos to take during the calibration. The default "
+    parser.add_argument("-num_pic", help="Amount of photos to take during the calibration. The default "
                                                     "value is 20. More photos, better precision", nargs='?',
                         const=20 ,default=20, type=int)
     parser.add_argument("-path", help="Path where to store camera parameters. Default is code location.", nargs='?',
@@ -155,7 +157,7 @@ if __name__ == "__main__":
 
     camera_name = int(args.camera_name)
     path = args.path
-    number_of_pictures = args.number_of_pictures
+    number_of_pictures = args.num_pic
     demo = args.demo
 
 
