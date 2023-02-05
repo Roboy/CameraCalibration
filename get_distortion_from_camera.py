@@ -1,15 +1,18 @@
-import json
 import os
-
 import numpy as np
 import cv2 as cv
-import glob
 import yaml
 from yaml import CLoader as Loader
 import argparse
 
 
-def get_shift_vector(mtx, image_size):
+def calculate_shift_vector(mtx, image_size):
+    """
+    :param mtx: camera matrix from cv.calibrateCamera().
+    :param image_size: image size of the original image.
+    :return: translation vector by which the original image should be shifted.
+    """
+
     img_size = np.array(image_size)
     img_size = np.flip(img_size)
     center = np.array([mtx[0][2], mtx[1][2]])
@@ -19,11 +22,21 @@ def get_shift_vector(mtx, image_size):
 
 
 def add_cross(img):
+    """
+    Add red cross in the center of the image.
+    :param img:
+    :return:
+    """
     num_rows, num_cols = img.shape[:2]
     cv.line(img, (int(num_cols / 2), 0), (int(num_cols / 2), num_rows), (0, 0, 255), 5)
     cv.line(img, (0, int(num_rows / 2)), (num_cols, int(num_rows / 2)), (0, 0, 255), 5)
 
 def get_camera(camera_name):
+    """
+    :param camera_name: parameter for cv.VideoCapture(camera_name).
+    :return: opnecv camera instance.
+    """
+
     webcam = cv.VideoCapture(camera_name)
 
     codec = 0x47504A4D  # MJPG
@@ -35,6 +48,13 @@ def get_camera(camera_name):
 
 
 def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
+    """
+    Uses opencv function to record and extract camera distortion values.
+    :param camera_name: parameter for cv.VideoCapture(camera_name).
+    :param number_of_pictures: amount of pictures for calibration.
+    :param demo: flag to show camera output.
+    :return: camera_distortion, shift_vector
+    """
 
     webcam = get_camera(camera_name)
 
@@ -55,32 +75,40 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
         ret, corners = cv.findChessboardCorners(gray, (14, 9), None)
         # If found, add object points, image points (after refining them)
         if ret == True:
+
+            # Add 3d points of the chessboard
             objpoints.append(objp)
+
+            # Add positions of the chessboard w.r.t. image
             corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
             imgpoints.append(corners2)
-            # Draw and display the corners
-
-            cv.drawChessboardCorners(img, (14, 9), corners2, ret)
-
-            ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-            shift_vector = get_shift_vector(mtx, img.shape[:2])
-
-            shift_matrix = np.float32([[1, 0, shift_vector[0]], [0, 1, shift_vector[1]]])
-            num_rows, num_cols = img.shape[:2]
-            img_translation = cv.warpAffine(img, shift_matrix, (num_cols, num_rows))
 
             if demo:
+                # Draw and display image from camera after translation
+
+                cv.drawChessboardCorners(img, (14, 9), corners2, ret)
+
+                # retrieve distortion values from recorded images
+                ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+                shift_vector = calculate_shift_vector(mtx, img.shape[:2])
+
+                shift_matrix = np.float32([[1, 0, shift_vector[0]], [0, 1, shift_vector[1]]])
+                num_rows, num_cols = img.shape[:2]
+                img_translation = cv.warpAffine(img, shift_matrix, (num_cols, num_rows))
+
                 imgS = cv.resize(img_translation, (960, 540))
                 add_cross(imgS)
                 cv.imshow('img', imgS)
                 cv.waitKey(500)
 
+            # reduce amount of images left
             number_of_pictures -= 1
             if number_of_pictures <= 0:
                 break
 
         else:
             if demo:
+                # display pure image from camera
                 imgS = cv.resize(img, (960, 540))
                 add_cross(imgS)
                 cv.imshow('img', imgS)
@@ -88,6 +116,7 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
 
     cv.destroyAllWindows()
 
+    # retrieve distortion values from recorded images
     ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
     camera_distortion = {
         "ret": ret,
@@ -98,6 +127,13 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
 
 
 def update_calibration(camera_name=1, number_of_pictures=20, path=None):
+    """
+    Do the calibration and save new parameters to the file
+    :param camera_name: parameter for cv.VideoCapture(camera_name).
+    :param number_of_pictures: amount of pictures for calibration.
+    :param path: directory, where to store camera distortion.
+    :return:
+    """
     if path is None:
         path = os.path.dirname(os.path.realpath(__file__))
     camera_distortion, image_shift = calibrate_camera(camera_name, number_of_pictures, demo=False)
@@ -105,7 +141,13 @@ def update_calibration(camera_name=1, number_of_pictures=20, path=None):
 
 
 def save_parameters(camera_distortion, image_shift, path):
-    # Write a YAML representation of camera_distortion to 'camera_distortion.yaml'.
+    """
+    Write a YAML representation of camera_distortion to 'camera_distortion.yaml'
+    :param camera_distortion: camera distortion from opencv function.
+    :param image_shift: calculated translation vector.
+    :param path: directory, where to store camera distortion.
+    :return:
+    """
     filename = 'camera_distortion.yaml'
     full_path = os.path.join(path, filename)
     if not os.path.exists(path):
@@ -119,15 +161,22 @@ def save_parameters(camera_distortion, image_shift, path):
 
 
 
-def get_image_shift(path):
-    # returns image_shift values
-    all_distortion = get_camera_distortion(path)
+def read_image_shift(path):
+    """
+    Read image shift vector from file
+    :param path: directory, where camera distortion file is located.
+    :return: image shift (translation) vector.
+    """
+    all_distortion = read_camera_distortion(path)
     return all_distortion['image_shift']
 
 
-def get_camera_distortion(path):
-    # returns camera_distortion values:
-    # ret, mtx, dist, rvecs, tvecs
+def read_camera_distortion(path):
+    """
+     Read camera distortion values from file.
+    :param path: directory, where camera distortion file is located.
+    :return: camera distortion (as a dictionary: ret, mtx, dist, rvecs, tvecs)
+    """
     filename = 'camera_distortion.yaml'
     full_path = os.path.join(path, filename)
     stream = open(full_path, 'r')
@@ -136,6 +185,8 @@ def get_camera_distortion(path):
 
 
 if __name__ == "__main__":
+
+    # Read arguments
     parser = argparse.ArgumentParser("Camera calibration")
     parser.add_argument("camera_name", help="Name of the camera, which calibrate", type=str)
     parser.add_argument("-num_pic", help="Amount of photos to take during the calibration. The default "
@@ -152,7 +203,7 @@ if __name__ == "__main__":
     number_of_pictures = args.num_pic
     demo = args.demo
 
-
+    # if directory does not exist, create it
     if path is None:
         path = os.path.dirname(os.path.realpath(__file__))
 
@@ -161,5 +212,8 @@ if __name__ == "__main__":
     print("Number of pictures", number_of_pictures)
     print("Demo: ", demo)
 
+    # measure calibration values
     camera_distortion, image_shift = calibrate_camera(camera_name, number_of_pictures, demo)
+
+    # save values to the file
     save_parameters(camera_distortion, image_shift, path)
