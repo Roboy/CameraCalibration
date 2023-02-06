@@ -27,3 +27,18 @@ Distortion values are stored in the `camera_distortion.yaml` file. It has a dict
 More about `dist`, `mtx`, `ret` you can find [here][1]
 
 [1]: https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
+
+# Python library use (alternative use)
+Alternatively, you can call this python script as library and use its functions.
+```python
+from get_distortion_from_camera import update_calibration, read_camera_distortion, read_image_shift
+
+# Do the calibration and save new distortion values to the file
+update_calibration(camera_name=1, number_of_pictures=20, path="1")
+
+# Read all camera distortion values from file
+cam_dist = read_camera_distortion(path = "1")
+
+# Read only image shift vector from file
+im_shift = read_image_shift(path = "1")
+```
