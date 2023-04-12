@@ -1,4 +1,4 @@
-# CameraCalibration
+# Camera Calibration
 Measures camera distortion values and computes the translation vector by which the image should be shifted.
 It uses opencv function  [`cv.calibrateCamera()`](https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html)
 ***
