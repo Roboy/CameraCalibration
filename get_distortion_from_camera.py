@@ -31,6 +31,7 @@ def add_cross(img):
     cv.line(img, (int(num_cols / 2), 0), (int(num_cols / 2), num_rows), (0, 0, 255), 5)
     cv.line(img, (0, int(num_rows / 2)), (num_cols, int(num_rows / 2)), (0, 0, 255), 5)
 
+
 def get_camera(camera_name):
     """
     :param camera_name: parameter for cv.VideoCapture(camera_name).
@@ -47,16 +48,52 @@ def get_camera(camera_name):
     return webcam
 
 
-def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
+def param_extract(objpoints, imgpoints, shape):
+    calibration_flags = cv.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv.fisheye.CALIB_FIX_SKEW
+    N_OK = len(objpoints)
+    K = np.zeros((3, 3))
+    D = np.zeros((4, 1))
+    rvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(N_OK)]
+    tvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(N_OK)]
+    objpoints_np = np.asarray(objpoints, dtype=np.float64)
+    imgpoints_np = np.asarray(imgpoints, dtype=np.float64)
+
+    objpoints_np = np.reshape(objpoints_np, (N_OK, 1, 14 * 9, 3))
+    imgpoints_np = np.reshape(imgpoints_np, (N_OK, 1, 14 * 9, 2))
+    try:
+        rms, _, _, _, _ = \
+            cv.fisheye.calibrate(
+                objpoints_np,
+                imgpoints_np,
+                shape,
+                K,
+                D,
+                rvecs,
+                tvecs,
+                calibration_flags,
+                (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 1e-6)
+            )
+    except:
+        objpoints = objpoints[:-1].copy()
+        imgpoints = imgpoints[:-1].copy()
+        rms = False
+
+    return rms, K, D, rvecs, tvecs
+
+
+def calibrate_camera(camera=1, number_of_pictures=20, demo=False):
     """
     Uses opencv function to record and extract camera distortion values.
-    :param camera_name: parameter for cv.VideoCapture(camera_name).
+    :param camera: VideoCapture or parameter for cv.VideoCapture(camera_name).
     :param number_of_pictures: amount of pictures for calibration.
     :param demo: flag to show camera output.
     :return: camera_distortion, shift_vector
     """
 
-    webcam = get_camera(camera_name)
+    if hasattr(camera, "read"):
+        webcam = camera
+    else:
+        webcam = get_camera(camera)
 
     # termination criteria
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -68,7 +105,16 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
     imgpoints = []  # 2d points in image plane.
 
     while True:
-        print("Move chessboard in front of the camera. Pictures left: ", number_of_pictures)
+        print("Move the chessboard to the different position in front of the camera. Pictures left: ", number_of_pictures)
+        cv.waitKey(1000)
+        print("Hold the chessboard still...")
+        cv.waitKey(500)
+        print("3...")
+        cv.waitKey(500)
+        print("2...")
+        cv.waitKey(500)
+        print("1")
+        print(chr(7))
         (_, img) = webcam.read()
         gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
         # Find the chess board corners
@@ -89,7 +135,9 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
                 cv.drawChessboardCorners(img, (14, 9), corners2, ret)
 
                 # retrieve distortion values from recorded images
-                ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+                # ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+                ret, mtx, dist, rvecs, tvecs = param_extract(objpoints, imgpoints, gray.shape[::-1])
+
                 shift_vector = calculate_shift_vector(mtx, img.shape[:2])
 
                 shift_matrix = np.float32([[1, 0, shift_vector[0]], [0, 1, shift_vector[1]]])
@@ -99,7 +147,7 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
                 imgS = cv.resize(img_translation, (960, 540))
                 add_cross(imgS)
                 cv.imshow('img', imgS)
-                cv.waitKey(500)
+                # cv.waitKey(500)
 
             # reduce amount of images left
             number_of_pictures -= 1
@@ -112,12 +160,15 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
                 imgS = cv.resize(img, (960, 540))
                 add_cross(imgS)
                 cv.imshow('img', imgS)
-                cv.waitKey(100)
+                # cv.waitKey(100)
 
     cv.destroyAllWindows()
 
     # retrieve distortion values from recorded images
-    ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+    # ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+    ret, mtx, dist, rvecs, tvecs = param_extract(objpoints, imgpoints, gray.shape[::-1])
+    shift_vector = calculate_shift_vector(mtx, img.shape[:2])
+
     camera_distortion = {
         "ret": ret,
         "mtx": mtx,
@@ -126,17 +177,17 @@ def calibrate_camera(camera_name=1, number_of_pictures=20, demo=False):
     return camera_distortion, shift_vector
 
 
-def update_calibration(camera_name=1, number_of_pictures=20, path=None):
+def update_calibration(camera=1, number_of_pictures=20, path=None):
     """
     Do the calibration and save new parameters to the file
-    :param camera_name: parameter for cv.VideoCapture(camera_name).
+    :param camera: VideoCapture or parameter for cv.VideoCapture(camera_name).
     :param number_of_pictures: amount of pictures for calibration.
     :param path: directory, where to store camera distortion.
     :return:
     """
     if path is None:
         path = os.path.dirname(os.path.realpath(__file__))
-    camera_distortion, image_shift = calibrate_camera(camera_name, number_of_pictures, demo=False)
+    camera_distortion, image_shift = calibrate_camera(camera, number_of_pictures, demo=False)
     save_parameters(camera_distortion, image_shift, path)
 
 
@@ -148,17 +199,23 @@ def save_parameters(camera_distortion, image_shift, path):
     :param path: directory, where to store camera distortion.
     :return:
     """
-    filename = 'camera_distortion.yaml'
-    full_path = os.path.join(path, filename)
+
     if not os.path.exists(path):
         os.makedirs(path)
+
+    if os.path.isdir(path):
+        filename = 'camera_distortion.yaml'
+        full_path = os.path.join(path, filename)
+    else:
+        full_path = path
     stream = open(full_path, 'w')
     data = camera_distortion.copy()
+    if hasattr(image_shift, 'tolist'):
+        image_shift = image_shift.tolist()
     data['image_shift'] = image_shift
     yaml.dump(data, stream)
 
     print("Calibration values are stored in: ", full_path)
-
 
 
 def read_image_shift(path):
@@ -177,8 +234,11 @@ def read_camera_distortion(path):
     :param path: directory, where camera distortion file is located.
     :return: camera distortion (as a dictionary: ret, mtx, dist, rvecs, tvecs)
     """
-    filename = 'camera_distortion.yaml'
-    full_path = os.path.join(path, filename)
+    if os.path.isdir(path):
+        filename = 'camera_distortion.yaml'
+        full_path = os.path.join(path, filename)
+    else:
+        full_path = path
     stream = open(full_path, 'r')
     data = yaml.load(stream, Loader)
     return data
@@ -190,8 +250,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("Camera calibration")
     parser.add_argument("camera_name", help="Name of the camera, which calibrate", type=str)
     parser.add_argument("-num_pic", help="Amount of photos to take during the calibration. The default "
-                                                    "value is 20. More photos, better precision", nargs='?',
-                        const=20 ,default=20, type=int)
+                                         "value is 20. More photos, better precision", nargs='?',
+                        const=20, default=20, type=int)
     parser.add_argument("-path", help="Path where to store camera parameters. Default is code location.", nargs='?',
                         const=None, default=None, type=str)
     parser.add_argument('-demo', help="Demo mode will show images with opencv.", action='store_const', default=False,
@@ -208,7 +268,7 @@ if __name__ == "__main__":
         path = os.path.dirname(os.path.realpath(__file__))
 
     print("Camera name: ", camera_name)
-    print("Path: ",  path)
+    print("Path: ", path)
     print("Number of pictures", number_of_pictures)
     print("Demo: ", demo)
 
